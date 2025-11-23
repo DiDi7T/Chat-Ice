@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "ice": "^3.7.100"
+  },
+  "devDependencies": {
+    "slice2js": "^3.7.100"
+  }
+}

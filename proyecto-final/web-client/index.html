@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Ice</title>
+</head>
+<body>
+<div id="loginPage" class="page">
+    <div class="container">
+        <h1>Chat Ice</h1>
+        <input type="text" id="usernameInput" placeholder="Tu nombre">
+        <button onclick="login()">Conectar</button>
+        <div id="loginStatus"></div>
+    </div>
+</div>
+
+<div id="chatPage" class="page" style="display: none;">
+    <div class="sidebar">
+        <div class="user-info">
+            <span id="currentUser"></span>
+            <button onclick="logout()">Salir</button>
+        </div>
+
+        <div class="section">
+            <h3>Usuarios</h3>
+            <ul id="usersList"></ul>
+        </div>
+
+        <div class="section">
+            <h3>Grupos</h3>
+            <button onclick="showCreateGroup()">+ Crear Grupo</button>
+            <ul id="groupsList"></ul>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="chat-header">
+            <h2 id="chatTitle">Selecciona un usuario o grupo</h2>
+            <div id="callControls" style="display: none;">
+                <button onclick="initiateCall()">📞 Llamar</button>
+            </div>
+        </div>
+
+        <div id="messagesContainer" class="messages"></div>
+
+        <div class="input-area">
+            <input type="text" id="messageInput" placeholder="Escribe un mensaje...">
+            <button onclick="sendMessage()">Enviar</button>
+            <button onclick="recordAudio()">🎤</button>
+        </div>
+    </div>
+</div>
+
+<!-- justo antes de cerrar el body -->
+<script src="extLibs/ice.js"></script>
+<script src="extLibs/chat.js"></script>
+
+
+</body>
+</html>
