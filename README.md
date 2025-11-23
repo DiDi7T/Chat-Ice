@@ -33,9 +33,9 @@ El sistema está compuesto por tres partes principales que deben ejecutarse en c
    - Este componente mantiene la lógica del chat y gestiona las conexiones mediante sockets.  
    - Es el responsable de recibir, procesar y distribuir los mensajes entre los distintos clientes conectados.
 
-2. **Servidor Proxy HTTP (Express.js)**  
+2. **Servidor Proxy RPC (ICE)**  
    - Actúa como intermediario entre el cliente web y el servidor Java.  
-   - Se encarga de recibir las solicitudes HTTP del navegador y traducirlas a mensajes de socket comprensibles para el backend.  
+   - Se encarga de recibir las solicitudes del navegador y traducirlas a mensajes de socket comprensibles para el backend.  
    - A su vez, recibe las respuestas del servidor Java y las envía nuevamente al cliente web en formato HTTP.
 
 3. **Cliente Web (Interfaz de Usuario)**  
@@ -46,13 +46,14 @@ El sistema está compuesto por tres partes principales que deben ejecutarse en c
 
 ## 🔄 Flujo de Comunicación
 
+
 El flujo de comunicación entre los distintos componentes es el siguiente:
 
-1. El **cliente web** envía solicitudes HTTP al **proxy Express**, conteniendo los datos del mensaje o la acción del usuario.  
-2. El **proxy HTTP** traduce esa solicitud a un formato de comunicación por **sockets**, y la envía al **backend Java**.  
-3. El **backend** procesa la información, ejecuta la lógica del chat grupal y devuelve una respuesta o actualización del estado.  
-4. El **proxy** recibe la respuesta del backend y la transmite nuevamente al cliente web mediante HTTP.  
-5. Finalmente, el **cliente web** actualiza la interfaz para reflejar los nuevos mensajes o cambios en la conversación.
+1. El **cliente web** inicializa un *communicator* de Ice en JavaScript y obtiene un **proxy remoto** al servicio `ChatService` expuesto por el **servidor Java** (vía WebSocket `ws://localhost:9099`).  
+2. El **cliente web** invoca operaciones remotas sobre ese proxy (registrarse, listar usuarios, enviar mensajes, crear grupos, etc.), como si fueran métodos locales, pero que en realidad se ejecutan en el servidor Ice.  
+3. El **servidor Java** recibe la invocación a través de Ice, ejecuta la lógica del chat (gestiona usuarios, grupos, historial, llamadas, audio) y, cuando es necesario, guarda la información en los repositorios correspondientes.  
+4. Además de devolver los resultados al cliente que hizo la llamada, el **servidor** utiliza los *callbacks* definidos en la interfaz `ChatCallback` para **notificar de forma asíncrona** a todos los clientes afectados (nuevo mensaje, usuario conectado/desconectado, grupo creado, llamada entrante, etc.).  
+5. Cada **cliente web** recibe esas notificaciones por Ice, actualiza su estado local (listas de usuarios y grupos, mensajes, llamadas) y refresca la interfaz para reflejar los cambios en tiempo real.
 
 
 
