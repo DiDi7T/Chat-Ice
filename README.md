@@ -8,12 +8,10 @@
 - **Nathalie Sánchez Trujillo** - A00405157  
 
 ---
-
-
 ## 🧩 Descripción General
 
-Este proyecto tiene como objetivo integrar un **cliente web** desarrollado en **HTML, CSS y JavaScript** con un **backend en Java**, mediante un **servidor proxy HTTP** implementado en **(Node.js)**.  
-El proxy actúa como intermediario entre el entorno web y el servidor Java basado en sockets, permitiendo la comunicación entre ambos y soportando funcionalidades como el **chat grupal**.
+Este proyecto integra un **cliente web** desarrollado en **HTML, CSS y JavaScript** con un **backend en Java** mediante el middleware **Ice (Internet Communications Engine)**.  
+El cliente se comunica directamente con el servidor Java a través de **proxies Ice** sobre **WebSocket**, lo que permite implementar funcionalidades de **chat grupal, audio y llamadas** en tiempo (casi) real.
 
 ---
 
@@ -21,76 +19,78 @@ El proxy actúa como intermediario entre el entorno web y el servidor Java basad
 
 - **Java JDK 17 o superior**
 - **Node.js (v16 o superior)**
-- **npm** (incluido con Node.js)
-- **Navegador web** 
+- **npm** (incluido con Node.js, usado para construir/levantar el cliente web)
+- **Navegador web moderno** (Chrome, Edge, Firefox, etc.)
 
+---
 
 ## 🚀 Instrucciones para Ejecutar el Sistema
 
-El sistema está compuesto por tres partes principales que deben ejecutarse en conjunto:
+El sistema está compuesto por dos partes principales que deben ejecutarse en conjunto:
 
-1. **Backend Java (Servidor Principal)**  
-   - Este componente mantiene la lógica del chat y gestiona las conexiones mediante sockets.  
-   - Es el responsable de recibir, procesar y distribuir los mensajes entre los distintos clientes conectados.
+1. **Backend Java (Servidor Ice)**  
+   - Implementa la lógica del chat: gestión de usuarios, grupos, historial, audio y llamadas.  
+   - Expone el servicio remoto `ChatService` definido en Slice, accesible mediante Ice sobre WebSocket (`ws://localhost:9099`).  
 
-2. **Servidor Proxy RPC (ICE)**  
-   - Actúa como intermediario entre el cliente web y el servidor Java.  
-   - Se encarga de recibir las solicitudes del navegador y traducirlas a mensajes de socket comprensibles para el backend.  
-   - A su vez, recibe las respuestas del servidor Java y las envía nuevamente al cliente web en formato HTTP.
+2. **Cliente Web (Interfaz de Usuario)**  
+   - Desarrollado en HTML, CSS y JavaScript, empaquetado con webpack.  
+   - Utiliza la librería JavaScript de **Ice** y las clases generadas por `slice2js` para crear un *communicator* y obtener un **proxy remoto** a `ChatService`.  
+   - Permite al usuario conectarse al chat, enviar y recibir mensajes, administrar grupos y manejar llamadas, actualizando la interfaz en tiempo real a partir de las notificaciones del servidor.
 
-3. **Cliente Web (Interfaz de Usuario)**  
-   - Desarrollado en HTML, CSS y JavaScript.  
-   - Permite al usuario final conectarse al chat, enviar y recibir mensajes de manera visual.  
-   - Toda la comunicación con el backend se realiza a través del proxy HTTP.
-
+---
 
 ## 🔄 Flujo de Comunicación
-
 
 El flujo de comunicación entre los distintos componentes es el siguiente:
 
 1. El **cliente web** inicializa un *communicator* de Ice en JavaScript y obtiene un **proxy remoto** al servicio `ChatService` expuesto por el **servidor Java** (vía WebSocket `ws://localhost:9099`).  
-2. El **cliente web** invoca operaciones remotas sobre ese proxy (registrarse, listar usuarios, enviar mensajes, crear grupos, etc.), como si fueran métodos locales, pero que en realidad se ejecutan en el servidor Ice.  
-3. El **servidor Java** recibe la invocación a través de Ice, ejecuta la lógica del chat (gestiona usuarios, grupos, historial, llamadas, audio) y, cuando es necesario, guarda la información en los repositorios correspondientes.  
-4. Además de devolver los resultados al cliente que hizo la llamada, el **servidor** utiliza los *callbacks* definidos en la interfaz `ChatCallback` para **notificar de forma asíncrona** a todos los clientes afectados (nuevo mensaje, usuario conectado/desconectado, grupo creado, llamada entrante, etc.).  
-5. Cada **cliente web** recibe esas notificaciones por Ice, actualiza su estado local (listas de usuarios y grupos, mensajes, llamadas) y refresca la interfaz para reflejar los cambios en tiempo real.
+2. El **cliente web** invoca operaciones remotas sobre ese proxy (registrarse, listar usuarios, enviar mensajes, crear grupos, iniciar llamadas, etc.) como si fueran métodos locales, pero en realidad se ejecutan en el servidor Ice.  
+3. El **servidor Java** recibe cada invocación a través de Ice, ejecuta la lógica del chat (gestiona usuarios, grupos, historial, audio y llamadas) y, cuando es necesario, persiste la información mediante los repositorios.  
+4. Además de devolver resultados al cliente que realizó la llamada, el **servidor** utiliza los *callbacks* de la interfaz `ChatCallback` para **notificar de forma asíncrona** a los clientes afectados (nuevo mensaje, usuario conectado/desconectado, grupo creado, llamada entrante, audio recibido, etc.).  
+5. Cada **cliente web** recibe estas notificaciones a través de Ice, actualiza su estado local (listas de usuarios y grupos, mensajes, llamadas) y refresca la interfaz para reflejar los cambios en tiempo real.
 
+Para usar el sistema es necesario que el **backend Java** y el **cliente web** estén corriendo simultáneamente.
 
-
-Para ejecutar el sistema completo, deben estar **los tres componentes corriendo simultáneamente**: el backend en Java, el proxy en Express, y el cliente abierto en el navegador.
+---
 
 ## Terminal 1: Backend Java
-```bash
 
- cd src 
-(desde tu ubicación actual, pasate a src)
+cd src
 
+Desde la raíz del proyecto, entra a la carpeta src
 .\gradlew.bat runServer
-```
+Esto levantará el servidor Ice y mostrará en consola algo como:
+
+Servidor Ice iniciado
+Escuchando en ws://localhost:9099
 
 
-## Terminal 3: Cliente Web (abre otra  terminal más)
+---
 
-```bash
+## Terminal 2: Cliente Web
+
 cd web-client
 npm install
 npm start
-```
 
-En la última terminal, encontraras algo como 
 
-```bash
-<i> [webpack-dev-server] On Your Network (IPv4): http://192.168.1.8:8080/  
+En la terminal verás algo similar a:
 
-```
+<i> [webpack-dev-server] On Your Network (IPv4): http://192.168.1.8:8080/
 
-Asegúrese de que:
+Abre en el navegador la URL indicada (normalmente `http://localhost:8080/`).
 
-El backend Java y el proxy Express estén corriendo.
+Asegúrate de que:
 
-No haya errores en las consolas.
-Luego abra el cliente en el navegador.
+- El **backend Java (Servidor Ice)** esté corriendo sin errores.
+- El **servidor de desarrollo del cliente web** esté levantado (webpack-dev-server).
+- No haya errores críticos en las consolas.
 
-#### 🧑‍💻 Ingresa con tu nombre de usuario
-####  💬 Chatea con los demás usuarios en tiempo real!
-#### 🌍 Crea y chatea en los grupos con otros usuarios conectados!
+Luego abre el cliente en el navegador y:
+
+#### 🧑‍💻 Ingresa con tu nombre de usuario  
+#### 💬 Chatea con los demás usuarios en tiempo real  
+#### 🌍 Crea y participa en grupos con otros usuarios conectados  
+#### 📞 Inicia y recibe llamadas entre usuarios o en grupos  
+#### 🎤 Envía y recibe mensajes de voz dentro de las conversaciones
+
