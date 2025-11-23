@@ -5,13 +5,14 @@ import iceDelegate from './services/iceDelegate.js';
 // ==================== ESTADO GLOBAL ====================
 
 const state = {
-    currentUser: null,
-    activeChat: null,  // { type: 'user'|'group', name: 'name' }
-    users: [],
-    groups: [],
-    messages: {},
-    inCall: false,
-    currentCallId: null
+  currentUser: null,
+  activeChat: null, 
+  users: [],
+  groups: [],        // Grupos disponibles en general
+  myGroups: new Set(), // Grupos de los que SOY miembro
+  messages: {},
+  inCall: false,
+  currentCallId: null
 };
 
 // ==================== LOGIN ====================
@@ -21,7 +22,7 @@ window.login = async function() {
     const statusEl = document.getElementById('loginStatus');
     
     if (!username) {
-        statusEl.textContent = '❌ Ingresa un nombre';
+        statusEl.textContent = 'Ingresa un nombre';
         statusEl.style.background = '#ffebee';
         return;
     }
@@ -56,7 +57,7 @@ window.login = async function() {
         document.getElementById('currentUser').textContent = username;
         
     } catch (error) {
-        statusEl.textContent = '❌ Error: ' + error.message;
+        statusEl.textContent = 'Error: ' + error.message;
         statusEl.style.background = '#ffebee';
         console.error(error);
     }
@@ -80,14 +81,20 @@ async function loadUsers() {
 }
 
 async function loadGroups() {
-    try {
-        const groups = await iceDelegate.listMyGroups();
-        state.groups = groups;
-        renderGroupsList();
-    } catch (error) {
-        console.error('Error cargando grupos:', error);
-    }
+  try {
+    const myGroupsArr = await iceDelegate.listMyGroups();
+    state.myGroups = new Set(myGroupsArr);
+
+   
+    const merged = new Set([...(state.groups || []), ...myGroupsArr]);
+    state.groups = Array.from(merged);
+
+    renderGroupsList();
+  } catch (error) {
+    console.error('Error cargando grupos:', error);
+  }
 }
+
 
 // ==================== RENDER LISTAS ====================
 
@@ -109,21 +116,54 @@ function renderUsersList() {
 }
 
 function renderGroupsList() {
-    const ul = document.getElementById('groupsList');
-    ul.innerHTML = '';
-    
-    state.groups.forEach(group => {
-        const li = document.createElement('li');
-        li.textContent = group;
-        li.onclick = () => selectChat('group', group);
-        
-        if (state.activeChat?.type === 'group' && state.activeChat?.name === group) {
-            li.classList.add('active');
-        }
-        
-        ul.appendChild(li);
-    });
+  const ul = document.getElementById('groupsList');
+  ul.innerHTML = '';
+
+  state.groups.forEach(group => {
+    const li = document.createElement('li');
+    li.textContent = group;
+
+    if (!state.myGroups.has(group)) {
+      li.classList.add('available-group'); 
+    }
+
+    li.onclick = () => handleGroupClick(group);
+
+    if (state.activeChat?.type === 'group' && state.activeChat?.name === group) {
+      li.classList.add('active');
+    }
+
+    ul.appendChild(li);
+  });
 }
+
+async function handleGroupClick(groupName) {
+  // Si ya soy miembro, simplemente abro el chat del grupo
+  if (state.myGroups.has(groupName)) {
+    await selectChat('group', groupName);
+    return;
+  }
+
+  // Si NO soy miembro, pregunto si quiero unirme
+  const join = confirm(
+    `Este es el grupo "${groupName}"  ¿Quieres unirte?`
+  );
+
+  if (!join) return;
+
+  try {
+    await iceDelegate.addUserToGroup(groupName, state.currentUser);
+    // Ahora paso a ser miembro
+    state.myGroups.add(groupName);
+    // Me aseguro de tener el grupo cargado y abro el chat
+    await loadGroups();
+    await selectChat('group', groupName);
+  } catch (err) {
+    console.error('Error uniéndose al grupo:', err);
+    alert('Error al unirse al grupo');
+  }
+}
+
 
 // ==================== SELECCIONAR CHAT ====================
 
@@ -237,7 +277,7 @@ function displayMessage(msg) {
 // ==================== CALLBACKS DE ICE ====================
 
 function handleMessageReceived(msg) {
-    console.log('📨 Mensaje recibido:', msg);
+    console.log('Mensaje recibido:', msg);
     
     // Si el mensaje es del chat activo, mostrarlo
     if (state.activeChat) {
@@ -254,12 +294,12 @@ function handleMessageReceived(msg) {
     
     // Notificación (opcional)
     if (msg.sender !== state.currentUser) {
-        console.log('💬 Nuevo mensaje de:', msg.sender);
+        console.log('Alerta: Nuevo mensaje de:', msg.sender);
     }
 }
 
 function handleUserJoined(username) {
-    console.log('✅ Usuario conectado:', username);
+    console.log('Usuario conectado:', username);
     
     if (!state.users.includes(username)) {
         state.users.push(username);
@@ -268,24 +308,36 @@ function handleUserJoined(username) {
 }
 
 function handleUserLeft(username) {
-    console.log('👋 Usuario desconectado:', username);
+    console.log('Usuario desconectado:', username);
     
     state.users = state.users.filter(u => u !== username);
     renderUsersList();
 }
-
 function handleGroupCreated(groupName, creator) {
-    console.log('📁 Grupo creado:', groupName);
-    loadGroups();
+  console.log('Grupo creado:', groupName, 'por', creator);
+
+  // Añadir el grupo a la lista de grupos disponibles si aún no está
+  if (!state.groups.includes(groupName)) {
+    state.groups.push(groupName);
+  }
+
+  
+  if (creator === state.currentUser) {
+    state.myGroups.add(groupName);
+  }
+
+  renderGroupsList();
 }
 
+
+
 function handleAudioReceived(from, audioData, audioId) {
-    console.log('🎤 Audio recibido de:', from);
+    console.log('Audio recibido de:', from);
     
     // Mostrar mensaje de audio
     const msg = {
         sender: from,
-        content: `🎤 Nota de voz [${audioId}]`,
+        content: ` Nota de voz [${audioId}]`,
         timestamp: new Date().toLocaleTimeString(),
         type: 'audio'
     };
@@ -307,7 +359,7 @@ window.initiateCall = async function() {
     try {
         await iceDelegate.initiateCall(state.activeChat.name, callId);
         state.inCall = true;
-        alert('📞 Llamando a ' + state.activeChat.name + '...');
+        alert('Llamando a ' + state.activeChat.name + '...');
     } catch (error) {
         console.error('Error iniciando llamada:', error);
         alert('Error al iniciar llamada');
@@ -315,14 +367,14 @@ window.initiateCall = async function() {
 };
 
 function handleCallRequest(from, callId) {
-    const accept = confirm(`📞 Llamada entrante de ${from}. ¿Aceptar?`);
+    const accept = confirm(`Llamada entrante de ${from}. ¿Aceptar?`);
     
     if (accept) {
         iceDelegate.acceptCall(from, callId)
             .then(() => {
                 state.inCall = true;
                 state.currentCallId = callId;
-                alert('✅ Llamada conectada');
+                alert('Llamada conectada');
             })
             .catch(err => console.error('Error aceptando llamada:', err));
     } else {
@@ -343,19 +395,19 @@ function handleCallRejected(from) {
 }
 
 function handleCallEnded(from) {
-    alert('☎️ Llamada finalizada');
+    alert('Llamada finalizada');
     state.inCall = false;
     state.currentCallId = null;
 }
 
 function handleGroupCallRequest(from, groupName, callId) {
-    console.log('📞 Llamada de grupo:', groupName);
+    console.log('Llamada de grupo:', groupName);
     alert(`📞 ${from} inició llamada en grupo ${groupName}`);
 }
 
 function handleCallAudioStream(from, audioChunk) {
     // Aquí se procesaría el stream de audio en tiempo real
-    console.log('🔊 Audio stream de:', from);
+    console.log(' Audio stream de:', from);
 }
 
 // ==================== GRUPOS ====================
@@ -367,7 +419,7 @@ window.showCreateGroup = function() {
     
     iceDelegate.createGroup(groupName)
         .then(() => {
-            alert('✅ Grupo creado: ' + groupName);
+            alert(' Grupo creado: ' + groupName);
             loadGroups();
         })
         .catch(err => {
@@ -379,7 +431,7 @@ window.showCreateGroup = function() {
 // ==================== AUDIO ====================
 
 window.recordAudio = function() {
-    alert('🎤 Función de grabación de audio - implementar con MediaRecorder API');
+    alert(' Función de grabación de audio - implementar con MediaRecorder API');
     
     // Implementación básica:
     /*
@@ -405,7 +457,7 @@ window.recordAudio = function() {
 
 // ==================== INICIALIZACIÓN ====================
 
-console.log('🚀 App cargada - Lista para conectar');
+console.log(' App cargada - Lista para conectar');
 window.addEventListener("beforeunload", async () => {
   await iceDelegate.disconnect();
 });

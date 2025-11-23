@@ -1,220 +1,297 @@
 class IceDelegate {
-    constructor() {
-        this.communicator = null;
-        this.chatService = null;
-        this.callbackAdapter = null;
-        this.username = null;
-        this.callbacks = {};
+  constructor() {
+    this.communicator = null;
+    this.chatService = null;
+    this.callbackAdapter = null;
+    this.username = null;
+    this.callbacks = {};
+  }
+
+  async init(username, callbacks) {
+    if (this.communicator) {
+      await this.disconnect();
     }
 
-    async init(username, callbacks) {
-        this.username = username;
-        this.callbacks = callbacks;
+    this.username = username;
+    this.callbacks = callbacks || {};
 
-        console.log('[IceDelegate] Inicializando');
-        // Inicializar Ice
-        this.communicator = Ice.initialize();
-        console.log('[IceDelegate] Communicator creado');
+    console.log('[IceDelegate] Inicializando');
 
-        // Crear proxy al servicio
-        const proxy = this.communicator.stringToProxy(
-            'ChatService:ws -h localhost -p 9099'
-        );
+    // Inicializar Ice
+    this.communicator = Ice.initialize();
+    console.log('[IceDelegate] Communicator creado');
 
-        this.chatService = await Chat.ChatServicePrx.checkedCast(proxy);
+    // Crear proxy al servicio con el endpoint (mismo que en Server.java)
+    const proxy = this.communicator.stringToProxy(
+      'ChatService:ws -h localhost -p 9099'
+    );
 
-        if (!this.chatService) {
-            throw new Error('No se pudo conectar al servicio Ice');
-        }
-        console.log('[IceDelegate] Servicio conectado');
+    this.chatService = await Chat.ChatServicePrx.checkedCast(proxy);
+    if (!this.chatService) {
+      throw new Error('No se pudo conectar al servicio Ice');
+    }
+    console.log('[IceDelegate] Servicio conectado');
 
-        // Crear callback implementation
-        const CallbackImpl = class {
-            constructor(delegate) {
-                this.delegate = delegate;
-            }
+    // ================== CALLBACK ==================
+    // Servant que implementa la interfaz ChatCallback (¡ahora extiende!)
+    const CallbackImpl = class extends Chat.ChatCallback {
+      constructor(delegate) {
+        super(); // IMPORTANTE para que Ice reconozca el tipo
+        this.delegate = delegate;
+      }
 
-            onMessageReceived(msg, current) {
-                console.log('[IceDelegate] onMessageReceived', msg);
-                if (this.delegate.callbacks.onMessageReceived) {
-                    this.delegate.callbacks.onMessageReceived(msg);
-                }
-            }
+      onMessageReceived(msg /*, current*/) {
+        console.log('[IceDelegate] onMessageReceived', msg);
+        this.delegate.callbacks.onMessageReceived &&
+          this.delegate.callbacks.onMessageReceived(msg);
+      }
 
-            onUserJoined(username, current) {
-                if (this.delegate.callbacks.onUserJoined) {
-                    this.delegate.callbacks.onUserJoined(username);
-                }
-            }
+      onUserJoined(username /*, current*/) {
+        this.delegate.callbacks.onUserJoined &&
+          this.delegate.callbacks.onUserJoined(username);
+      }
 
-            onUserLeft(username, current) {
-                if (this.delegate.callbacks.onUserLeft) {
-                    this.delegate.callbacks.onUserLeft(username);
-                }
-            }
+      onUserLeft(username /*, current*/) {
+        this.delegate.callbacks.onUserLeft &&
+          this.delegate.callbacks.onUserLeft(username);
+      }
 
-            onGroupCreated(groupName, creator, current) {
-                if (this.delegate.callbacks.onGroupCreated) {
-                    this.delegate.callbacks.onGroupCreated(groupName, creator);
-                }
-            }
+      onGroupCreated(groupName, creator /*, current*/) {
+        this.delegate.callbacks.onGroupCreated &&
+          this.delegate.callbacks.onGroupCreated(groupName, creator);
+      }
 
-            onAudioReceived(from, audioData, audioId, current) {
-                if (this.delegate.callbacks.onAudioReceived) {
-                    this.delegate.callbacks.onAudioReceived(from, audioData, audioId);
-                }
-            }
+      onAudioReceived(from, audioData, audioId /*, current*/) {
+        this.delegate.callbacks.onAudioReceived &&
+          this.delegate.callbacks.onAudioReceived(from, audioData, audioId);
+      }
 
-            onCallRequest(from, callId, current) {
-                if (this.delegate.callbacks.onCallRequest) {
-                    this.delegate.callbacks.onCallRequest(from, callId);
-                }
-            }
+      onCallRequest(from, callId /*, current*/) {
+        this.delegate.callbacks.onCallRequest &&
+          this.delegate.callbacks.onCallRequest(from, callId);
+      }
 
-            onCallAccepted(from, callId, current) {
-                if (this.delegate.callbacks.onCallAccepted) {
-                    this.delegate.callbacks.onCallAccepted(from, callId);
-                }
-            }
+      onCallAccepted(from, callId /*, current*/) {
+        this.delegate.callbacks.onCallAccepted &&
+          this.delegate.callbacks.onCallAccepted(from, callId);
+      }
 
-            onCallRejected(from, current) {
-                if (this.delegate.callbacks.onCallRejected) {
-                    this.delegate.callbacks.onCallRejected(from);
-                }
-            }
+      onCallRejected(from /*, current*/) {
+        this.delegate.callbacks.onCallRejected &&
+          this.delegate.callbacks.onCallRejected(from);
+      }
 
-            onCallEnded(from, current) {
-                if (this.delegate.callbacks.onCallEnded) {
-                    this.delegate.callbacks.onCallEnded(from);
-                }
-            }
+      onCallEnded(from /*, current*/) {
+        this.delegate.callbacks.onCallEnded &&
+          this.delegate.callbacks.onCallEnded(from);
+      }
 
-            onGroupCallRequest(from, groupName, callId, current) {
-                if (this.delegate.callbacks.onGroupCallRequest) {
-                    this.delegate.callbacks.onGroupCallRequest(from, groupName, callId);
-                }
-            }
+      onGroupCallRequest(from, groupName, callId /*, current*/) {
+        this.delegate.callbacks.onGroupCallRequest &&
+          this.delegate.callbacks.onGroupCallRequest(
+            from,
+            groupName,
+            callId
+          );
+      }
 
-            onGroupCallStarted(groupName, callId, current) {
-                if (this.delegate.callbacks.onGroupCallStarted) {
-                    this.delegate.callbacks.onGroupCallStarted(groupName, callId);
-                }
-            }
+      onGroupCallStarted(groupName, callId /*, current*/) {
+        this.delegate.callbacks.onGroupCallStarted &&
+          this.delegate.callbacks.onGroupCallStarted(groupName, callId);
+      }
 
-            onGroupCallEnded(groupName, current) {
-                if (this.delegate.callbacks.onGroupCallEnded) {
-                    this.delegate.callbacks.onGroupCallEnded(groupName);
-                }
-            }
+      onGroupCallEnded(groupName /*, current*/) {
+        this.delegate.callbacks.onGroupCallEnded &&
+          this.delegate.callbacks.onGroupCallEnded(groupName);
+      }
 
-            onCallAudioStream(from, audioChunk, current) {
-                if (this.delegate.callbacks.onCallAudioStream) {
-                    this.delegate.callbacks.onCallAudioStream(from, audioChunk);
-                }
-            }
-        };
+      onCallAudioStream(from, audioChunk /*, current*/) {
+        this.delegate.callbacks.onCallAudioStream &&
+          this.delegate.callbacks.onCallAudioStream(from, audioChunk);
+      }
+    };
 
-        // Crear adapter para callbacks
-        this.callbackAdapter = await this.communicator.createObjectAdapter("");
-        console.log('[IceDelegate] Adapter creado');
-        const callbackImpl = new CallbackImpl(this);
-        const identity = Ice.stringToIdentity(Ice.generateUUID());
-        const callbackPrx = this.callbackAdapter.add(callbackImpl, identity);
-        console.log('[IceDelegate] Callback agregado, identity:', identity);
-        await this.callbackAdapter.activate();
-        console.log('[IceDelegate] Adapter ACTIVADO');
-        // Registrar usuario con callback
-        console.log('[IceDelegate] Intentando registrar usuario con callbackPrx:', callbackPrx);
-        const registered = await this.chatService.registerUser(
-            username,
-            Chat.ChatCallbackPrx.uncheckedCast(callbackPrx)
-        );
-        console.log('[IceDelegate] Resultado del registro:', registered);
-        if (!registered) {
-            throw new Error('No se pudo registrar el usuario');
-        }
+    // ================== ADAPTER BIDIRECCIONAL ==================
 
-        console.log('✅ Conectado y registrado:', username);
-        return true;
+    // 1) Adapter para callbacks
+    this.callbackAdapter = await this.communicator.createObjectAdapter('');
+    console.log('[IceDelegate] Adapter creado');
+
+    // 2) Asociar adapter a la MISMA conexión WS que usa el proxy
+    const connection = await this.chatService.ice_getConnection();
+    await connection.setAdapter(this.callbackAdapter);
+    console.log('[IceDelegate] Adapter asociado a la conexión WebSocket');
+
+    // 3) Registrar servant del callback
+    const callbackImpl = new CallbackImpl(this);
+    const identity = Ice.stringToIdentity(Ice.generateUUID());
+    const callbackPrxBase = this.callbackAdapter.add(callbackImpl, identity);
+    console.log('[IceDelegate] Callback agregado, identity:', identity);
+
+    await this.callbackAdapter.activate();
+    console.log('[IceDelegate] Adapter ACTIVADO');
+
+    const callbackPrx = Chat.ChatCallbackPrx.uncheckedCast(callbackPrxBase);
+
+    // 4) Registrar usuario con ese callback
+    console.log(
+      '[IceDelegate] Intentando registrar usuario con callbackPrx:',
+      callbackPrx
+    );
+
+    const registered = await this.chatService.registerUser(
+      username,
+      callbackPrx
+    );
+
+    console.log('[IceDelegate] Resultado del registro:', registered);
+    if (!registered) {
+      throw new Error(
+        'No se pudo registrar el usuario (posible nombre duplicado)'
+      );
     }
 
-    async disconnect() {
-        if (this.chatService && this.username) {
-            await this.chatService.unregisterUser(this.username);
-        }
-        if (this.callbackAdapter) {
-            await this.callbackAdapter.destroy();
-        }
-        if (this.communicator) {
-            await this.communicator.destroy();
-        }
+    console.log('Conectado y registrado:', username);
+    return true;
+  }
+
+  async disconnect() {
+    console.log('[IceDelegate] Desconectando...');
+
+    try {
+      if (this.chatService && this.username) {
+        await this.chatService.unregisterUser(this.username);
+      }
+    } catch (e) {
+      console.warn('[IceDelegate] Error al desregistrar usuario:', e);
     }
 
-    // ==================== MÉTODOS DEL SERVICIO ====================
-
-    async sendPrivateMessage(to, content) {
-        return await this.chatService.sendPrivateMessage(this.username, to, content);
+    try {
+      if (this.callbackAdapter) {
+        await this.callbackAdapter.destroy();
+      }
+    } catch (e) {
+      console.warn('[IceDelegate] Error al destruir adapter:', e);
     }
 
-    async getPrivateHistory(otherUser) {
-        return await this.chatService.getPrivateHistory(this.username, otherUser);
+    try {
+      if (this.communicator) {
+        await this.communicator.destroy();
+      }
+    } catch (e) {
+      console.warn('[IceDelegate] Error al destruir communicator:', e);
     }
 
-    async listUsers() {
-        return await this.chatService.listUsers();
-    }
+    this.communicator = null;
+    this.chatService = null;
+    this.callbackAdapter = null;
+    this.username = null;
 
-    async createGroup(groupName) {
-        return await this.chatService.createGroup(groupName, this.username);
-    }
+    console.log('[IceDelegate] Desconectado');
+  }
 
-    async addUserToGroup(groupName, username) {
-        return await this.chatService.addUserToGroup(groupName, username);
-    }
+  // ==================== MÉTODOS DEL SERVICIO ====================
 
-    async sendGroupMessage(groupName, content) {
-        return await this.chatService.sendGroupMessage(this.username, groupName, content);
-    }
+  // Usuarios
+  async listUsers() {
+    return this.chatService.listUsers();
+  }
 
-    async getGroupHistory(groupName) {
-        return await this.chatService.getGroupHistory(groupName);
-    }
+  async listMyGroups() {
+    return this.chatService.listMyGroups(this.username);
+  }
 
-    async listMyGroups() {
-        return await this.chatService.listMyGroups(this.username);
-    }
+  // Mensajes privados
+  async sendPrivateMessage(to, content) {
+    return this.chatService.sendPrivateMessage(this.username, to, content);
+  }
 
-    async sendAudioMessage(to, audioData, audioId) {
-        return await this.chatService.sendAudioMessage(this.username, to, audioData, audioId);
-    }
+  async getPrivateHistory(otherUser) {
+    return this.chatService.getPrivateHistory(this.username, otherUser);
+  }
 
-    async initiateCall(to, callId) {
-        return await this.chatService.initiateCall(this.username, to, callId);
-    }
+  // Grupos
+  async createGroup(groupName) {
+    return this.chatService.createGroup(groupName, this.username);
+  }
 
-    async acceptCall(from, callId) {
-        return await this.chatService.acceptCall(this.username, from, callId);
-    }
+  async addUserToGroup(groupName, username) {
+    return this.chatService.addUserToGroup(groupName, username);
+  }
 
-    async rejectCall(from) {
-        return await this.chatService.rejectCall(this.username, from);
-    }
+  async sendGroupMessage(groupName, content) {
+    return this.chatService.sendGroupMessage(this.username, groupName, content);
+  }
 
-    async endCall(to) {
-        return await this.chatService.endCall(this.username, to);
-    }
+  async getGroupHistory(groupName) {
+    return this.chatService.getGroupHistory(groupName);
+  }
 
-    async initiateGroupCall(groupName, callId) {
-        return await this.chatService.initiateGroupCall(this.username, groupName, callId);
-    }
+  // Audio
+  async sendAudioMessage(to, audioData, audioId) {
+    return this.chatService.sendAudioMessage(
+      this.username,
+      to,
+      audioData,
+      audioId
+    );
+  }
 
-    async joinGroupCall(groupName, callId) {
-        return await this.chatService.joinGroupCall(this.username, groupName, callId);
-    }
+  async sendGroupAudioMessage(groupName, audioData, audioId) {
+    return this.chatService.sendGroupAudioMessage(
+      this.username,
+      groupName,
+      audioData,
+      audioId
+    );
+  }
 
-    async streamCallAudio(to, audioChunk) {
-        return await this.chatService.streamCallAudio(this.username, to, audioChunk);
-    }
+  // Llamadas individuales
+  async initiateCall(to, callId) {
+    return this.chatService.initiateCall(this.username, to, callId);
+  }
+
+  async acceptCall(from, callId) {
+    return this.chatService.acceptCall(this.username, from, callId);
+  }
+
+  async rejectCall(from) {
+    return this.chatService.rejectCall(this.username, from);
+  }
+
+  async endCall(to) {
+    return this.chatService.endCall(this.username, to);
+  }
+
+  // Llamadas de grupo
+  async initiateGroupCall(groupName, callId) {
+    return this.chatService.initiateGroupCall(this.username, groupName, callId);
+  }
+
+  async joinGroupCall(groupName, callId) {
+    return this.chatService.joinGroupCall(this.username, groupName, callId);
+  }
+
+  async leaveGroupCall(groupName, callId) {
+    return this.chatService.leaveGroupCall(this.username, groupName, callId);
+  }
+
+  async endGroupCall(groupName, callId) {
+    return this.chatService.endGroupCall(groupName, callId);
+  }
+
+  // Streaming de audio
+  async streamCallAudio(to, audioChunk) {
+    return this.chatService.streamCallAudio(this.username, to, audioChunk);
+  }
+
+  async streamGroupCallAudio(groupName, audioChunk) {
+    return this.chatService.streamGroupCallAudio(
+      this.username,
+      groupName,
+      audioChunk
+    );
+  }
 }
 
 // Singleton
