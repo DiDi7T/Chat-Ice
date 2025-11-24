@@ -15,6 +15,52 @@ const state = {
   currentCallId: null
 };
 
+// === AUDIO & LLAMADAS ===
+let localStream = null;
+let mediaRecorder = null;
+let isStreaming = false;
+const AUDIO_MIME_TYPE = "audio/webm;codecs=opus";
+
+
+
+async function startAudioStream(toUser = null, toGroup = null) {
+    if (isStreaming) return;
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(localStream, { mimeType: AUDIO_MIME_TYPE });
+
+        mediaRecorder.ondataavailable = async (e) => {
+            if (!e.data.size) return;
+
+            const buf = new Uint8Array(await e.data.arrayBuffer());
+
+            if (toUser) {
+                await iceDelegate.streamCallAudio(toUser, buf);
+            } else if (toGroup) {
+                await iceDelegate.streamGroupCallAudio(toGroup, buf);
+            }
+        };
+
+        mediaRecorder.start(250);  // enviamos audio cada 250ms
+        isStreaming = true;
+        console.log("🔊 STREAM STARTED");
+    } catch (err) {
+        console.error("Error iniciando stream:", err);
+        alert("No se pudo acceder al micrófono.");
+    }
+}
+
+function stopAudioStream() {
+    if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    mediaRecorder = null;
+    localStream = null;
+    isStreaming = false;
+    console.log("🔇 STREAM STOPPED");
+}
+
+
+
 // ==================== LOGIN ====================
 
 window.login = async function() {
@@ -332,83 +378,147 @@ function handleGroupCreated(groupName, creator) {
 
 
 function handleAudioReceived(from, audioData, audioId) {
-    console.log('Audio recibido de:', from);
-    
-    // Mostrar mensaje de audio
-    const msg = {
-        sender: from,
-        content: ` Nota de voz [${audioId}]`,
-        timestamp: new Date().toLocaleTimeString(),
-        type: 'audio'
-    };
-    
-    displayMessage(msg);
-    
-    // Reproducir audio (implementar después)
-    // playAudio(audioData);
+  console.log('Audio recibido de:', from);
+
+  // 1. Crear el blob a partir del Uint8Array que viene de Ice
+  const blob = new Blob([audioData], { type: AUDIO_MIME_TYPE });
+  const url = URL.createObjectURL(blob);
+
+  // 2. Crear un mensaje visual con un <audio> embebido
+  const msg = {
+    sender: from,
+    content: `
+      Nota de voz [${audioId}]
+      <br/>
+      <audio controls src="${url}"></audio>
+    `,
+    timestamp: new Date().toLocaleTimeString(),
+    type: 'audio',
+  };
+
+  displayMessage(msg);
+
+  // 3. (Opcional) Autoplay
+  // const audio = new Audio(url);
+  // audio.play();
 }
+
 
 // ==================== LLAMADAS ====================
 
-window.initiateCall = async function() {
-    if (!state.activeChat || state.activeChat.type !== 'user') return;
-    
-    const callId = 'call_' + Date.now();
+window.initiateCall = async function () {
+    if (!state.activeChat || state.activeChat.type !== "user") {
+        alert("Selecciona un usuario para llamar.");
+        return;
+    }
+
+    const callee = state.activeChat.name;
+    const callId = "call_" + Date.now();
     state.currentCallId = callId;
-    
+
     try {
-        await iceDelegate.initiateCall(state.activeChat.name, callId);
+        await iceDelegate.initiateCall(callee, callId);
         state.inCall = true;
-        alert('Llamando a ' + state.activeChat.name + '...');
-    } catch (error) {
-        console.error('Error iniciando llamada:', error);
-        alert('Error al iniciar llamada');
+        alert("📞 Llamando a " + callee + "...");
+
+        // Empezar a enviar audio desde YA
+        startAudioStream(callee, null);
+    } catch (err) {
+        console.error(err);
+        alert("Error al iniciar llamada.");
     }
 };
 
+
 function handleCallRequest(from, callId) {
-    const accept = confirm(`Llamada entrante de ${from}. ¿Aceptar?`);
-    
+    const accept = confirm(`📞 Llamada entrante de ${from}. ¿Aceptar?`);
+
     if (accept) {
         iceDelegate.acceptCall(from, callId)
             .then(() => {
                 state.inCall = true;
                 state.currentCallId = callId;
-                alert('Llamada conectada');
+
+                startAudioStream(from, null);
+                alert("Llamada conectada.");
             })
-            .catch(err => console.error('Error aceptando llamada:', err));
+            .catch(err => console.error("Error al aceptar llamada", err));
     } else {
-        iceDelegate.rejectCall(from)
-            .catch(err => console.error('Error rechazando llamada:', err));
+        iceDelegate.rejectCall(from);
     }
 }
 
+
 function handleCallAccepted(from, callId) {
-    alert('✅ ' + from + ' aceptó la llamada');
+    alert("✅ " + from + " aceptó la llamada.");
     state.inCall = true;
+
+    // Por si acaso
+    if (!isStreaming) startAudioStream(from, null);
+}
+
+
+function handleCallEnded(from) {
+    alert("📴 Llamada finalizada.");
+    stopAudioStream();
+    state.inCall = false;
+    state.currentCallId = null;
 }
 
 function handleCallRejected(from) {
-    alert('❌ ' + from + ' rechazó la llamada');
+    alert("❌ " + from + " rechazó la llamada.");
+    stopAudioStream();
     state.inCall = false;
     state.currentCallId = null;
 }
 
-function handleCallEnded(from) {
-    alert('Llamada finalizada');
-    state.inCall = false;
-    state.currentCallId = null;
-}
+window.initiateGroupCall = async function () {
+    if (!state.activeChat || state.activeChat.type !== "group") {
+        alert("Selecciona un grupo para llamar.");
+        return;
+    }
+
+    const group = state.activeChat.name;
+    const callId = "gcall_" + Date.now();
+    state.currentCallId = callId;
+
+    try {
+        await iceDelegate.initiateGroupCall(group, callId);
+        alert("📞 Llamada grupal iniciada en " + group);
+
+        startAudioStream(null, group);
+    } catch (err) {
+        console.error(err);
+        alert("No se pudo iniciar la llamada de grupo.");
+    }
+};
+
+
 
 function handleGroupCallRequest(from, groupName, callId) {
-    console.log('Llamada de grupo:', groupName);
-    alert(`📞 ${from} inició llamada en grupo ${groupName}`);
+    const accept = confirm(`📢 Llamada grupal en ${groupName} iniciada por ${from}. ¿Unirte?`);
+
+    if (accept) {
+        iceDelegate.joinGroupCall(groupName, callId)
+            .then(() => {
+                alert("Conectado a llamada grupal.");
+                startAudioStream(null, groupName);
+            });
+    } else {
+        iceDelegate.leaveGroupCall(groupName, callId);
+    }
 }
 
+
+
 function handleCallAudioStream(from, audioChunk) {
-    // Aquí se procesaría el stream de audio en tiempo real
-    console.log(' Audio stream de:', from);
+    const blob = new Blob([audioChunk], { type: AUDIO_MIME_TYPE });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play().catch((e) => console.warn("Error reproduciendo audio", e));
 }
+
+
 
 // ==================== GRUPOS ====================
 
@@ -428,32 +538,66 @@ window.showCreateGroup = function() {
         });
 };
 
-// ==================== AUDIO ====================
+// ==================== AUDIO (NOTAS DE VOZ) ====================
 
-window.recordAudio = function() {
-    alert(' Función de grabación de audio - implementar con MediaRecorder API');
-    
-    // Implementación básica:
-    /*
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            const mediaRecorder = new MediaRecorder(stream);
-            const chunks = [];
-            
-            mediaRecorder.ondataavailable = e => chunks.push(e.data);
-            mediaRecorder.onstop = async () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                const audioData = new Uint8Array(await blob.arrayBuffer());
-                const audioId = 'audio_' + Date.now();
-                
-                await iceDelegate.sendAudioMessage(state.activeChat.name, audioData, audioId);
-            };
-            
-            mediaRecorder.start();
-            setTimeout(() => mediaRecorder.stop(), 5000); // 5 segundos
-        });
-    */
+window.recordAudio = async function () {
+  if (!state.activeChat) {
+    alert('Primero selecciona un chat (usuario o grupo)');
+    return;
+  }
+
+  try {
+    // 1. Pedir permiso al micro
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, { mimeType: AUDIO_MIME_TYPE });
+
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        chunks.push(e.data);
+      }
+    };
+
+    recorder.onstop = async () => {
+      // Detener pistas del micrófono
+      stream.getTracks().forEach((t) => t.stop());
+
+      // 2. Unir los chunks y convertir a Uint8Array para enviarlo por Ice
+      const blob = new Blob(chunks, { type: AUDIO_MIME_TYPE });
+      const arrayBuffer = await blob.arrayBuffer();
+      const audioData = new Uint8Array(arrayBuffer);
+      const audioId = 'audio_' + Date.now();
+
+      // 3. Decidir si es privado o de grupo
+      const { type, name } = state.activeChat;
+
+      if (type === 'user') {
+        await iceDelegate.sendAudioMessage(name, audioData, audioId);
+      } else if (type === 'group') {
+        await iceDelegate.sendGroupAudioMessage(name, audioData, audioId);
+      }
+
+      // 4. Mostrar en mi chat como “enviado”
+      const msg = {
+        sender: state.currentUser,
+        content: ` Nota de voz [${audioId}]`,
+        timestamp: new Date().toLocaleTimeString(),
+        type: 'audio',
+      };
+      displayMessage(msg);
+    };
+
+    // 4. Empezar la grabación por unos segundos (ej: 5 seg)
+    recorder.start();
+    alert('Grabando nota de voz por 5 segundos...');
+    setTimeout(() => recorder.stop(), 5000);
+  } catch (err) {
+    console.error('Error grabando audio:', err);
+    alert('No se pudo acceder al micrófono');
+  }
 };
+
 
 // ==================== INICIALIZACIÓN ====================
 

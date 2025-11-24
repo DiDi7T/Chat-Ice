@@ -1,4 +1,4 @@
-package com.icesi.chatapp.models;
+package com.icesi.chatapp.model;
 
 import Chat.ChatCallbackPrx;
 

@@ -1,7 +1,7 @@
 package com.icesi.chatapp.managers;
 
 import Chat.ChatCallbackPrx;
-import com.icesi.chatapp.models.UserSession;
+import com.icesi.chatapp.model.UserSession;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 

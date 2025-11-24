@@ -1,4 +1,4 @@
-package com.icesi.chatapp.models;
+package com.icesi.chatapp.model;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;

@@ -1,4 +1,4 @@
-package com.icesi.chatapp.models;
+package com.icesi.chatapp.model;
 
 public class CallInfo {
     private String caller;

@@ -1,7 +1,7 @@
 package com.icesi.chatapp.managers;
 
-import com.icesi.chatapp.models.CallInfo;
-import com.icesi.chatapp.models.GroupCallInfo;
+import com.icesi.chatapp.model.CallInfo;
+import com.icesi.chatapp.model.GroupCallInfo;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 

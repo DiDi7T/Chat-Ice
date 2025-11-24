@@ -251,13 +251,17 @@ class IceDelegate {
     return this.chatService.initiateCall(this.username, to, callId);
   }
 
-  async acceptCall(from, callId) {
+async acceptCall(from, callId) {
+    // this.username = quien ACEPTA
     return this.chatService.acceptCall(this.username, from, callId);
-  }
+}
 
-  async rejectCall(from) {
+async rejectCall(from) {
+    // this.username = quien RECHAZA
     return this.chatService.rejectCall(this.username, from);
-  }
+}
+
+
 
   async endCall(to) {
     return this.chatService.endCall(this.username, to);

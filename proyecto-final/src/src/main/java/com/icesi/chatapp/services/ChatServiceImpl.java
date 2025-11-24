@@ -5,7 +5,7 @@ import com.zeroc.Ice.Current;
 import com.icesi.chatapp.repos.IMessageRepo;
 import com.icesi.chatapp.managers.UserManager;
 import com.icesi.chatapp.managers.CallManager;
-import com.icesi.chatapp.models.*;
+import com.icesi.chatapp.model.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
