@@ -17,11 +17,9 @@ class IceDelegate {
 
     console.log('[IceDelegate] Inicializando');
 
-    // Inicializar Ice
     this.communicator = Ice.initialize();
     console.log('[IceDelegate] Communicator creado');
 
-    // Crear proxy al servicio con el endpoint (mismo que en Server.java)
     const proxy = this.communicator.stringToProxy(
       'ChatService:ws -h localhost -p 9099'
     );
@@ -32,126 +30,75 @@ class IceDelegate {
     }
     console.log('[IceDelegate] Servicio conectado');
 
-    // ================== CALLBACK ==================
-    // Servant que implementa la interfaz ChatCallback (¡ahora extiende!)
+    // ================== CALLBACK (SOLO MENSAJES Y USUARIOS) ==================
     const CallbackImpl = class extends Chat.ChatCallback {
       constructor(delegate) {
-        super(); // IMPORTANTE para que Ice reconozca el tipo
+        super();
         this.delegate = delegate;
       }
 
-      onMessageReceived(msg /*, current*/) {
-        console.log('[IceDelegate] onMessageReceived', msg);
-        this.delegate.callbacks.onMessageReceived &&
-          this.delegate.callbacks.onMessageReceived(msg);
+      onMessageReceived(msg) {
+        this.delegate.callbacks.onMessageReceived?.(msg);
       }
 
-      onUserJoined(username /*, current*/) {
-        this.delegate.callbacks.onUserJoined &&
-          this.delegate.callbacks.onUserJoined(username);
+      onUserJoined(username) {
+        this.delegate.callbacks.onUserJoined?.(username);
       }
 
-      onUserLeft(username /*, current*/) {
-        this.delegate.callbacks.onUserLeft &&
-          this.delegate.callbacks.onUserLeft(username);
+      onUserLeft(username) {
+        this.delegate.callbacks.onUserLeft?.(username);
       }
 
-      onGroupCreated(groupName, creator /*, current*/) {
-        this.delegate.callbacks.onGroupCreated &&
-          this.delegate.callbacks.onGroupCreated(groupName, creator);
+      onGroupCreated(groupName, creator) {
+        this.delegate.callbacks.onGroupCreated?.(groupName, creator);
       }
 
-      onAudioReceived(from, audioData, audioId /*, current*/) {
-        this.delegate.callbacks.onAudioReceived &&
-          this.delegate.callbacks.onAudioReceived(from, audioData, audioId);
+      onAudioReceived(from, audioData, audioId) {
+        this.delegate.callbacks.onAudioReceived?.(from, audioData, audioId);
       }
 
-      onCallRequest(from, callId /*, current*/) {
-        this.delegate.callbacks.onCallRequest &&
-          this.delegate.callbacks.onCallRequest(from, callId);
+      // Callbacks de llamadas (solo señalización)
+      onCallRequest(from, callId) {
+        this.delegate.callbacks.onCallRequest?.(from, callId);
       }
 
-      onCallAccepted(from, callId /*, current*/) {
-        this.delegate.callbacks.onCallAccepted &&
-          this.delegate.callbacks.onCallAccepted(from, callId);
+      onCallAccepted(from, callId) {
+        this.delegate.callbacks.onCallAccepted?.(from, callId);
       }
 
-      onCallRejected(from /*, current*/) {
-        this.delegate.callbacks.onCallRejected &&
-          this.delegate.callbacks.onCallRejected(from);
+      onCallRejected(from) {
+        this.delegate.callbacks.onCallRejected?.(from);
       }
 
-      onCallEnded(from /*, current*/) {
-        this.delegate.callbacks.onCallEnded &&
-          this.delegate.callbacks.onCallEnded(from);
+      onCallEnded(from) {
+        this.delegate.callbacks.onCallEnded?.(from);
       }
 
-      onGroupCallRequest(from, groupName, callId /*, current*/) {
-        this.delegate.callbacks.onGroupCallRequest &&
-          this.delegate.callbacks.onGroupCallRequest(
-            from,
-            groupName,
-            callId
-          );
-      }
-
-      onGroupCallStarted(groupName, callId /*, current*/) {
-        this.delegate.callbacks.onGroupCallStarted &&
-          this.delegate.callbacks.onGroupCallStarted(groupName, callId);
-      }
-
-      onGroupCallEnded(groupName /*, current*/) {
-        this.delegate.callbacks.onGroupCallEnded &&
-          this.delegate.callbacks.onGroupCallEnded(groupName);
-      }
-
-      onCallAudioStream(from, audioChunk /*, current*/) {
-        this.delegate.callbacks.onCallAudioStream &&
-          this.delegate.callbacks.onCallAudioStream(from, audioChunk);
-      }
+      // Estas ya no se usan
+      onGroupCallRequest() {}
+      onGroupCallStarted() {}
+      onGroupCallEnded() {}
+      onCallAudioStream() {}
     };
 
-    // ================== ADAPTER BIDIRECCIONAL ==================
-
-    // 1) Adapter para callbacks
     this.callbackAdapter = await this.communicator.createObjectAdapter('');
-    console.log('[IceDelegate] Adapter creado');
-
-    // 2) Asociar adapter a la MISMA conexión WS que usa el proxy
     const connection = await this.chatService.ice_getConnection();
     await connection.setAdapter(this.callbackAdapter);
-    console.log('[IceDelegate] Adapter asociado a la conexión WebSocket');
 
-    // 3) Registrar servant del callback
     const callbackImpl = new CallbackImpl(this);
     const identity = Ice.stringToIdentity(Ice.generateUUID());
     const callbackPrxBase = this.callbackAdapter.add(callbackImpl, identity);
-    console.log('[IceDelegate] Callback agregado, identity:', identity);
 
     await this.callbackAdapter.activate();
-    console.log('[IceDelegate] Adapter ACTIVADO');
-
     const callbackPrx = Chat.ChatCallbackPrx.uncheckedCast(callbackPrxBase);
 
-    // 4) Registrar usuario con ese callback
-    console.log(
-      '[IceDelegate] Intentando registrar usuario con callbackPrx:',
-      callbackPrx
-    );
+    const registered = await this.chatService.registerUser(username, callbackPrx);
 
-    const registered = await this.chatService.registerUser(
-      username,
-      callbackPrx
-    );
-
-    console.log('[IceDelegate] Resultado del registro:', registered);
     if (!registered) {
-      throw new Error(
-        'No se pudo registrar el usuario (posible nombre duplicado)'
-      );
+      throw new Error('No se pudo registrar el usuario (nombre duplicado)');
     }
 
-    console.log('Conectado y registrado:', username);
+    console.log(' Conectado y registrado:', username);
     return true;
   }
 
@@ -227,77 +174,32 @@ class IceDelegate {
     return this.chatService.getGroupHistory(groupName);
   }
 
-  // Audio
+  // Notas de voz (NO llamadas)
   async sendAudioMessage(to, audioData, audioId) {
-    return this.chatService.sendAudioMessage(
-      this.username,
-      to,
-      audioData,
-      audioId
-    );
+    return this.chatService.sendAudioMessage(this.username, to, audioData, audioId);
   }
 
   async sendGroupAudioMessage(groupName, audioData, audioId) {
-    return this.chatService.sendGroupAudioMessage(
-      this.username,
-      groupName,
-      audioData,
-      audioId
-    );
+    return this.chatService.sendGroupAudioMessage(this.username, groupName, audioData, audioId);
   }
 
-  // Llamadas individuales
+  // Señalización de llamadas (solo notificación, audio va por WebSocket)
   async initiateCall(to, callId) {
     return this.chatService.initiateCall(this.username, to, callId);
   }
 
-async acceptCall(from, callId) {
-    // this.username = quien ACEPTA
+  async acceptCall(from, callId) {
     return this.chatService.acceptCall(this.username, from, callId);
-}
+  }
 
-async rejectCall(from) {
-    // this.username = quien RECHAZA
+  async rejectCall(from) {
     return this.chatService.rejectCall(this.username, from);
-}
-
-
+  }
 
   async endCall(to) {
     return this.chatService.endCall(this.username, to);
   }
-
-  // Llamadas de grupo
-  async initiateGroupCall(groupName, callId) {
-    return this.chatService.initiateGroupCall(this.username, groupName, callId);
-  }
-
-  async joinGroupCall(groupName, callId) {
-    return this.chatService.joinGroupCall(this.username, groupName, callId);
-  }
-
-  async leaveGroupCall(groupName, callId) {
-    return this.chatService.leaveGroupCall(this.username, groupName, callId);
-  }
-
-  async endGroupCall(groupName, callId) {
-    return this.chatService.endGroupCall(groupName, callId);
-  }
-
-  // Streaming de audio
-  async streamCallAudio(to, audioChunk) {
-    return this.chatService.streamCallAudio(this.username, to, audioChunk);
-  }
-
-  async streamGroupCallAudio(groupName, audioChunk) {
-    return this.chatService.streamGroupCallAudio(
-      this.username,
-      groupName,
-      audioChunk
-    );
-  }
 }
 
-// Singleton
 const iceDelegate = new IceDelegate();
 export default iceDelegate;

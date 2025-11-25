@@ -4,8 +4,6 @@ import Chat.*;
 import com.zeroc.Ice.Current;
 import com.icesi.chatapp.repos.IMessageRepo;
 import com.icesi.chatapp.managers.UserManager;
-import com.icesi.chatapp.managers.CallManager;
-import com.icesi.chatapp.model.*;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,15 +14,12 @@ public class ChatServiceImpl implements ChatService {
 
     private final IMessageRepo messageRepo;
     private final UserManager userManager;
-    private final CallManager callManager;
     private final Map<String, Set<String>> groups = new ConcurrentHashMap<>();
     private final DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
 
     public ChatServiceImpl(IMessageRepo messageRepo) {
         this.messageRepo = messageRepo;
         this.userManager = new UserManager();
-        this.callManager = new CallManager();
     }
 
     // ==================== USUARIOS ====================
@@ -61,9 +56,7 @@ public class ChatServiceImpl implements ChatService {
     public boolean sendPrivateMessage(String from, String to, String content, Current current) {
         ChatCallbackPrx recipient = userManager.getUser(to);
 
-        if (recipient == null) {
-            return false;
-        }
+        if (recipient == null) return false;
 
         Message msg = createMessage(from, content, "private");
 
@@ -73,8 +66,7 @@ public class ChatServiceImpl implements ChatService {
             System.out.println("mensaje " + from + " → " + to + ": " + content);
             return true;
         } catch (Exception e) {
-            System.err.println("Error enviando mensaje");
-            e.printStackTrace();
+            System.err.println(" Error enviando mensaje");
             return false;
         }
     }
@@ -89,9 +81,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public boolean createGroup(String groupName, String creator, Current current) {
-        if (groups.containsKey(groupName)) {
-            return false;
-        }
+        if (groups.containsKey(groupName)) return false;
 
         Set<String> members = ConcurrentHashMap.newKeySet();
         members.add(creator);
@@ -147,7 +137,7 @@ public class ChatServiceImpl implements ChatService {
         return userGroups.toArray(new String[0]);
     }
 
-    // ==================== AUDIO ====================
+    // ==================== NOTAS DE VOZ ====================
 
     @Override
     public boolean sendAudioMessage(String from, String to, byte[] audioData, String audioId, Current current) {
@@ -177,7 +167,7 @@ public class ChatServiceImpl implements ChatService {
         return true;
     }
 
-    // ==================== LLAMADAS INDIVIDUALES ====================
+    // ==================== SEÑALIZACIÓN DE LLAMADAS (SIN AUDIO) ====================
 
     @Override
     public boolean initiateCall(String from, String to, String callId, Current current) {
@@ -185,14 +175,11 @@ public class ChatServiceImpl implements ChatService {
 
         if (recipient == null) return false;
 
-        callManager.createCall(callId, from, to);
-
         try {
             recipient.onCallRequest(from, callId);
-            System.out.println(" Llamada: " + from + " → " + to);
+            System.out.println(" Llamada iniciada: " + from + " → " + to);
             return true;
         } catch (Exception e) {
-            callManager.endCall(callId);
             return false;
         }
     }
@@ -200,14 +187,12 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public boolean acceptCall(String from, String to, String callId, Current current) {
         ChatCallbackPrx caller = userManager.getUser(to);
-        CallInfo call = callManager.getCall(callId);
 
-        if (caller == null || call == null) return false;
-
-        callManager.acceptCall(callId);
+        if (caller == null) return false;
 
         try {
             caller.onCallAccepted(from, callId);
+            System.out.println("Llamada aceptada: " + from + " ↔ " + to);
             return true;
         } catch (Exception e) {
             return false;
@@ -220,10 +205,9 @@ public class ChatServiceImpl implements ChatService {
 
         if (caller == null) return false;
 
-        callManager.cleanupUserCalls(from);
-
         try {
             caller.onCallRejected(from);
+            System.out.println(" Llamada rechazada por: " + from);
             return true;
         } catch (Exception e) {
             return false;
@@ -236,107 +220,57 @@ public class ChatServiceImpl implements ChatService {
 
         if (otherUser == null) return false;
 
-        callManager.cleanupUserCalls(from);
-
         try {
             otherUser.onCallEnded(from);
+            System.out.println(" Llamada finalizada: " + from + " → " + to);
             return true;
         } catch (Exception e) {
             return false;
         }
     }
 
-    // ==================== LLAMADAS DE GRUPO ====================
+    // ==================== MÉTODOS NO USADOS (MANTENER POR COMPATIBILIDAD CON chat.ice) ====================
 
     @Override
     public boolean initiateGroupCall(String from, String groupName, String callId, Current current) {
-        Set<String> members = groups.get(groupName);
-
-        if (members == null || !members.contains(from)) return false;
-
-        callManager.createGroupCall(groupName, callId, from);
-
-        notifyGroupMembers(groupName, from, callback -> callback.onGroupCallRequest(from, groupName, callId));
-
-        System.out.println(" Llamada de grupo: " + groupName);
-        return true;
+        System.out.println(" initiateGroupCall no implementado (usar WebSocket)");
+        return false;
     }
 
     @Override
     public boolean joinGroupCall(String username, String groupName, String callId, Current current) {
-        GroupCallInfo groupCall = callManager.getGroupCall(groupName);
-
-        if (groupCall == null || !groupCall.getCallId().equals(callId)) return false;
-
-        groupCall.addParticipant(username);
-
-        notifyGroupCallParticipants(groupCall, username, callback -> callback.onUserJoined(username));
-
-        return true;
+        System.out.println(" joinGroupCall no implementado (usar WebSocket)");
+        return false;
     }
 
     @Override
     public boolean leaveGroupCall(String username, String groupName, String callId, Current current) {
-        GroupCallInfo groupCall = callManager.getGroupCall(groupName);
-
-        if (groupCall == null) return false;
-
-        groupCall.removeParticipant(username);
-
-        notifyGroupCallParticipants(groupCall, null, callback -> callback.onUserLeft(username));
-
-        if (groupCall.isEmpty()) {
-            callManager.endGroupCall(groupName);
-        }
-
-        return true;
+        System.out.println(" leaveGroupCall no implementado (usar WebSocket)");
+        return false;
     }
 
     @Override
     public boolean endGroupCall(String groupName, String callId, Current current) {
-        GroupCallInfo groupCall = callManager.getGroupCall(groupName);
-
-        if (groupCall == null) return false;
-
-        notifyGroupCallParticipants(groupCall, null, callback -> callback.onGroupCallEnded(groupName));
-
-        callManager.endGroupCall(groupName);
-        return true;
+        System.out.println("endGroupCall no implementado (usar WebSocket)");
+        return false;
     }
-
-    // ==================== STREAMING ====================
 
     @Override
     public boolean streamCallAudio(String from, String to, byte[] audioChunk, Current current) {
-        ChatCallbackPrx recipient = userManager.getUser(to);
-
-        if (recipient == null) return false;
-
-        try {
-            recipient.onCallAudioStream(from, audioChunk);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
+        System.out.println(" streamCallAudio no implementado (usar WebSocket)");
+        return false;
     }
 
     @Override
     public boolean streamGroupCallAudio(String from, String groupName, byte[] audioChunk, Current current) {
-        GroupCallInfo groupCall = callManager.getGroupCall(groupName);
-
-        if (groupCall == null) return false;
-
-        notifyGroupCallParticipants(groupCall, from, callback -> callback.onCallAudioStream(from, audioChunk));
-
-        return true;
+        System.out.println(" streamGroupCallAudio no implementado (usar WebSocket)");
+        return false;
     }
 
     // ==================== MÉTODOS AUXILIARES ====================
 
     private void handleUserDisconnect(String username) {
         userManager.unregisterUser(username);
-        callManager.cleanupUserCalls(username);
-        callManager.cleanupGroupCalls(username);
 
         for (Set<String> members : groups.values()) {
             members.remove(username);
@@ -416,22 +350,7 @@ public class ChatServiceImpl implements ChatService {
                     try {
                         action.execute(callback);
                     } catch (Exception e) {
-                        System.err.println("Error notificando a " + member);
-                    }
-                }
-            }
-        }
-    }
-
-    private void notifyGroupCallParticipants(GroupCallInfo groupCall, String excludeUser, NotificationAction action) {
-        for (String participant : groupCall.getParticipants()) {
-            if (!participant.equals(excludeUser)) {
-                ChatCallbackPrx callback = userManager.getUser(participant);
-                if (callback != null) {
-                    try {
-                        action.execute(callback);
-                    } catch (Exception e) {
-                        System.err.println("Error notificando");
+                        System.err.println(" Error notificando a " + member);
                     }
                 }
             }

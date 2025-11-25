@@ -21,6 +21,11 @@ slice {
 dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'com.zeroc:ice:3.7.10'
+
+    // JSR 356 - Java WebSocket API
+    implementation 'javax.websocket:javax.websocket-api:1.1'
+    implementation 'org.glassfish.tyrus:tyrus-server:1.19'
+    implementation 'org.glassfish.tyrus:tyrus-container-grizzly-server:1.19'
     testImplementation platform('org.junit:junit-bom:5.10.0')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
